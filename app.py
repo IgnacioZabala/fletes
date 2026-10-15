@@ -15,10 +15,10 @@ DEFAULT_DRIVE_ID = "1X4SRt1MRDAhv5Xn2D-wucQJnVKZn6KDE"
 
 # --- SIDEBAR: ESTRUCTURA DE COSTOS DEL CAMIÓN ---
 st.sidebar.header("⚙️ 1. Costos Variables (por KM)")
-gasoil_precio = st.sidebar.number_input("Precio Gasoil ($/L)", value=1150.0, step=10.0)
+gasoil_precio = st.sidebar.number_input("Precio Gasoil ($/L)", value=2000.0, step=10.0)
 consumo_l_100km = st.sidebar.number_input("Consumo Camión (L / 100 km)", value=38.0, step=1.0)
 costo_mantenimiento_km = st.sidebar.number_input("Mantenimiento y Repuestos ($/km)", value=180.0, step=10.0)
-costo_neumaticos_km = st.sidebar.number_input("Desgaste de Cubiertas ($/km)", value=160.0, step=10.0)
+costo_neumaticos_km = st.sidebar.number_input("Desgaste de Cubiertas ($/km)", value=150.0, step=10.0)
 
 # Cálculo Costo Variable por KM recorrido (ida + vuelta)
 costo_gasoil_km = (consumo_l_100km / 100.0) * gasoil_precio
