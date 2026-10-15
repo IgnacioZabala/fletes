@@ -7,10 +7,13 @@ import re
 
 st.set_page_config(page_title="Calculadora Flete Lácteo", layout="wide", page_icon="🚚")
 
-st.title("Calculadora")
+st.title("🚚 Calculadora de Flete Lácteo vs. Tarifa de Referencia")
 st.markdown("Herramienta interactiva para evaluar el punto de equilibrio y la conveniencia económica del flete lácteo.")
 
-# --- DATOS POR DEFECTO EMBEBIDOS (RESPALDO SI NO HAY CONEXIÓN/ID) ---
+# --- ID PRECARGADO POR DEFECTO ---
+DEFAULT_DRIVE_ID = "1X4SRt1MRDAhv5Xn2D-wucQJnVKZn6KDE"
+
+# --- DATOS EMBEBIDOS DE RESPALDO (EN CASO DE FALTA DE CONEXIÓN O ERROR) ---
 RAW_RATES = [
     9636.69, 9636.69, 9636.69, 9636.69, 9636.69, 9636.69, 9636.69, 9636.69, 9636.69, 9636.69,
     9864.22, 10096.67, 10329.15, 10566.63, 10811.61, 11061.60, 11311.57, 11571.55, 11836.52, 12104.00,
@@ -39,7 +42,7 @@ DEFAULT_DF = pd.DataFrame({
     'Tarifa_Tn': RAW_RATES[:300]
 })
 
-# --- HELPER PARA EXTRAER EL ID DE GOOGLE DRIVE ---
+# --- EXTRAER ID DESDE TEXTO O URL ---
 def extract_file_id(url_or_id):
     if not url_or_id:
         return ""
@@ -52,14 +55,13 @@ def extract_file_id(url_or_id):
         return match_param.group(1)
     return url_or_id
 
-# --- CARGA DESDE GOOGLE DRIVE ---
+# --- CARGA AUTOMÁTICA DESDE GOOGLE DRIVE ---
 @st.cache_data(ttl=600)
 def load_from_drive(file_id_input):
     clean_id = extract_file_id(file_id_input)
     if not clean_id:
         return DEFAULT_DF, "Cargado con datos por defecto."
     
-    # Intenta enlace de descarga Excel y exportación Google Sheet
     urls_to_try = [
         f"https://drive.google.com/uc?export=download&id={clean_id}",
         f"https://docs.google.com/spreadsheets/d/{clean_id}/export?format=xlsx"
@@ -71,20 +73,20 @@ def load_from_drive(file_id_input):
             if res.status_code == 200 and len(res.content) > 500:
                 excel_buffer = io.BytesIO(res.content)
                 df = pd.read_excel(excel_buffer)
-                df = df.iloc[:, :2] # Selecciona las dos primeras columnas (KM, TARIFA)
+                df = df.iloc[:, :2] # Toma las dos primeras columnas (KM y Tarifa)
                 df.columns = ['KM', 'Tarifa_Tn']
-                return df, f"✅ Planilla cargada exitosamente desde Google Drive"
+                return df, "✅ Planilla cargada exitosamente desde Google Drive"
         except Exception:
             continue
             
-    return DEFAULT_DF, "⚠️ No se pudo descargar desde Drive. Verificá que el archivo tenga acceso 'Cualquier persona con el enlace'."
+    return DEFAULT_DF, "⚠️ No se pudo descargar desde Drive. Verificá que el archivo tenga acceso público ('Cualquier persona con el enlace')."
 
-# --- SIDEBAR: PARÁMETROS Y DRIVE ---
+# --- SIDEBAR ---
 st.sidebar.header("⚙️ Configuración")
 
 drive_input = st.sidebar.text_input(
     "ID o Enlace de Google Drive", 
-    value="", 
+    value=DEFAULT_DRIVE_ID, 
     placeholder="Pegá el ID o enlace del archivo"
 )
 
