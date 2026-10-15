@@ -26,10 +26,10 @@ cv_total_km_recorrido = costo_gasoil_km + costo_mantenimiento_km + costo_neumati
 
 st.sidebar.divider()
 st.sidebar.header("🏢 2. Costos Fijos Mensuales")
-sueldo_chofer = st.sidebar.number_input("Sueldo Chofer + Cargas Soc. ($)", value=1800000.0, step=50000.0)
+sueldo_chofer = st.sidebar.number_input("Sueldo Chofer + Cargas Soc. ($)", value=2300000.0, step=50000.0)
 seguros_patentes = st.sidebar.number_input("Seguro, Patente, VTV, Satelital ($)", value=450000.0, step=20000.0)
-amortizacion_unidad = st.sidebar.number_input("Amortización / Depreciación ($)", value=900000.0, step=50000.0)
-gastos_admin = st.sidebar.number_input("Administración y Cochera ($)", value=250000.0, step=20000.0)
+amortizacion_unidad = st.sidebar.number_input("Amortización / Depreciación ($)", value=2600000.0, step=50000.0)
+gastos_admin = st.sidebar.number_input("Sueldo ($)", value=2000000.0, step=20000.0)
 viajes_estimados_mes = st.sidebar.number_input("Viajes Estimados al Mes", value=20, min_value=1, step=1)
 
 cf_total_mensual = sueldo_chofer + seguros_patentes + amortizacion_unidad + gastos_admin
