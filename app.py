@@ -1,208 +1,227 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 import requests
 import io
 import re
 
-st.set_page_config(page_title="Calculadora Flete Lácteo", layout="wide", page_icon="🚚")
+st.set_page_config(page_title="Gestión y Rentabilidad de Camión Lácteo", layout="wide", page_icon="🚛")
 
-st.title("🚚 Calculadora de Flete Lácteo vs. Tarifa de Referencia")
-st.markdown("Herramienta interactiva para evaluar el punto de equilibrio y la conveniencia económica del flete lácteo.")
+st.title("🚛 Control de Rentabilidad y Gestión de Camión Lácteo")
+st.markdown("Calculadora de costos operativos, simulador de viajes y análisis de rentabilidad neta.")
 
-# --- ID PRECARGADO POR DEFECTO ---
 DEFAULT_DRIVE_ID = "1X4SRt1MRDAhv5Xn2D-wucQJnVKZn6KDE"
 
-# --- DATOS EMBEBIDOS DE RESPALDO (EN CASO DE FALTA DE CONEXIÓN O ERROR) ---
-RAW_RATES = [
-    9636.69, 9636.69, 9636.69, 9636.69, 9636.69, 9636.69, 9636.69, 9636.69, 9636.69, 9636.69,
-    9864.22, 10096.67, 10329.15, 10566.63, 10811.61, 11061.60, 11311.57, 11571.55, 11836.52, 12104.00,
-    12376.48, 12653.95, 12933.93, 13218.91, 13508.88, 13801.36, 14098.84, 14398.81, 14703.79, 15011.27,
-    15321.25, 15636.22, 15953.70, 16273.68, 16596.15, 16923.63, 17253.61, 17586.08, 17921.06, 18258.54,
-    18598.51, 18941.00, 19285.97, 19633.45, 19983.43, 20335.90, 20690.88, 21048.36, 21408.33, 21770.81,
-    22135.79, 22503.26, 22873.24, 23245.72, 23620.69, 23998.17, 24378.15, 24760.62, 25145.60, 25533.08,
-    25923.05, 26315.53, 26710.51, 27107.98, 27507.96, 27910.44, 28315.41, 28722.89, 29132.87, 29545.34,
-    29960.32, 30377.80, 30797.77, 31220.25, 31645.23, 32072.70, 32502.68, 32935.16, 33370.13, 33807.61,
-    34247.59, 34690.06, 35135.04, 35582.52, 36032.49, 36484.97, 36939.95, 37397.42, 37857.40, 38319.88,
-    38784.85, 39252.33, 39722.31, 40194.78, 40669.76, 41147.24, 41627.21, 42109.69, 42594.67, 43082.14,
-    43572.12, 44064.60, 44559.57, 45057.05, 45557.03, 46059.50, 46564.48, 47071.96, 47581.93, 48094.41,
-    48609.39, 49126.86, 49646.84, 50169.32, 50694.29, 51221.77, 51751.75, 52284.22, 52819.20, 53356.68,
-    53896.65, 54439.13, 54984.11, 55531.58, 56081.56, 56633.54, 57188.01, 57744.99, 58304.46, 58866.44,
-    59430.92, 59997.89, 60567.37, 61139.35, 61713.82, 62290.80, 62870.28, 63452.25, 64036.73, 64623.71,
-    65213.18, 65805.16, 66399.64, 66996.61, 67596.09, 68198.07, 68802.54, 69409.52, 70018.99, 70630.97,
-    71245.45, 71862.42, 72481.90, 73103.88, 73728.35, 74355.33, 74984.81, 75616.78, 76251.26, 76888.24,
-    77527.71, 78169.69, 78814.17, 79461.14, 80110.62, 80762.60, 81417.07, 82074.05, 82733.53, 83395.50,
-    84059.98, 84726.96, 85396.43, 86068.41, 86742.89, 87419.86, 88099.34, 88781.32, 89465.79, 90152.77,
-    90842.25, 91534.22, 92228.70, 92925.68, 93625.15, 94327.13, 95031.61, 95738.58, 96448.06, 97160.04,
-    97874.51, 98591.49, 99310.97, 100032.94, 100757.42, 101484.40, 102213.87, 102945.85, 103680.33, 104417.30
-]
+# --- SIDEBAR: ESTRUCTURA DE COSTOS DEL CAMIÓN ---
+st.sidebar.header("⚙️ 1. Costos Variables (por KM)")
+gasoil_precio = st.sidebar.number_input("Precio Gasoil ($/L)", value=1150.0, step=10.0)
+consumo_l_100km = st.sidebar.number_input("Consumo Camión (L / 100 km)", value=38.0, step=1.0)
+costo_mantenimiento_km = st.sidebar.number_input("Mantenimiento y Repuestos ($/km)", value=180.0, step=10.0)
+costo_neumaticos_km = st.sidebar.number_input("Desgaste de Cubiertas ($/km)", value=160.0, step=10.0)
 
-DEFAULT_DF = pd.DataFrame({
-    'KM': list(range(1, len(RAW_RATES[:300]) + 1)),
-    'Tarifa_Tn': RAW_RATES[:300]
-})
+# Cálculo Costo Variable por KM recorrido (ida + vuelta)
+costo_gasoil_km = (consumo_l_100km / 100.0) * gasoil_precio
+cv_total_km_recorrido = costo_gasoil_km + costo_mantenimiento_km + costo_neumaticos_km
 
-# --- EXTRAER ID DESDE TEXTO O URL ---
+st.sidebar.divider()
+st.sidebar.header("🏢 2. Costos Fijos Mensuales")
+sueldo_chofer = st.sidebar.number_input("Sueldo Chofer + Cargas Soc. ($)", value=1800000.0, step=50000.0)
+seguros_patentes = st.sidebar.number_input("Seguro, Patente, VTV, Satelital ($)", value=450000.0, step=20000.0)
+amortizacion_unidad = st.sidebar.number_input("Amortización / Depreciación ($)", value=900000.0, step=50000.0)
+gastos_admin = st.sidebar.number_input("Administración y Cochera ($)", value=250000.0, step=20000.0)
+viajes_estimados_mes = st.sidebar.number_input("Viajes Estimados al Mes", value=20, min_value=1, step=1)
+
+cf_total_mensual = sueldo_chofer + seguros_patentes + amortizacion_unidad + gastos_admin
+cf_por_viaje = cf_total_mensual / viajes_estimados_mes
+
+st.sidebar.divider()
+st.sidebar.header("🔗 3. Planilla de Viajes (Drive)")
+drive_input = st.sidebar.text_input("ID o Enlace de Google Drive", value=DEFAULT_DRIVE_ID)
+
+# --- CARGA Y PROCESAMIENTO DESDE DRIVE ---
 def extract_file_id(url_or_id):
-    if not url_or_id:
-        return ""
+    if not url_or_id: return ""
     url_or_id = url_or_id.strip()
     match = re.search(r'/(?:d|file/d)/([a-zA-Z0-9_-]+)', url_or_id)
-    if match:
-        return match.group(1)
+    if match: return match.group(1)
     match_param = re.search(r'id=([a-zA-Z0-9_-]+)', url_or_id)
-    if match_param:
-        return match_param.group(1)
+    if match_param: return match_param.group(1)
     return url_or_id
 
-# --- CARGA AUTOMÁTICA DESDE GOOGLE DRIVE ---
-@st.cache_data(ttl=600)
-def load_from_drive(file_id_input):
+@st.cache_data(ttl=300)
+def load_trips_data(file_id_input):
     clean_id = extract_file_id(file_id_input)
     if not clean_id:
-        return DEFAULT_DF, "Cargado con datos por defecto."
+        return None, "Sin ID configurado."
     
-    urls_to_try = [
+    urls = [
         f"https://drive.google.com/uc?export=download&id={clean_id}",
         f"https://docs.google.com/spreadsheets/d/{clean_id}/export?format=xlsx"
     ]
-    
-    for url in urls_to_try:
+    for url in urls:
         try:
             res = requests.get(url, timeout=10)
             if res.status_code == 200 and len(res.content) > 500:
                 excel_buffer = io.BytesIO(res.content)
-                df = pd.read_excel(excel_buffer)
-                df = df.iloc[:, :2] # Toma las dos primeras columnas (KM y Tarifa)
-                df.columns = ['KM', 'Tarifa_Tn']
-                return df, "✅ Planilla cargada exitosamente desde Google Drive"
+                # Intentar leer pestaña 'Viajes' o la primera
+                xls = pd.ExcelFile(excel_buffer)
+                sheet_name = 'Viajes' if 'Viajes' in xls.sheet_names else xls.sheet_names[0]
+                df_trips = pd.read_excel(xls, sheet_name=sheet_name)
+                return df_trips, "✅ Planilla vinculada con éxito desde Google Drive"
         except Exception:
             continue
-            
-    return DEFAULT_DF, "⚠️ No se pudo descargar desde Drive. Verificá que el archivo tenga acceso público ('Cualquier persona con el enlace')."
+    return None, "⚠️ No se pudo cargar la planilla. Verificá los permisos del archivo."
 
-# --- SIDEBAR ---
-st.sidebar.header("⚙️ Configuración")
+df_raw, status_msg = load_trips_data(drive_input)
 
-drive_input = st.sidebar.text_input(
-    "ID o Enlace de Google Drive", 
-    value=DEFAULT_DRIVE_ID, 
-    placeholder="Pegá el ID o enlace del archivo"
-)
-
-aforo_tn = st.sidebar.number_input(
-    "Aforo del Camión (Toneladas)", 
-    min_value=1.0, 
-    max_value=60.0, 
-    value=30.0, 
-    step=1.0
-)
-litros_totales = aforo_tn * 1000
-
-precio_fijo_litro = st.sidebar.number_input(
-    "Precio Fijo Actual ($/Litro)", 
-    min_value=1.0, 
-    max_value=200.0, 
-    value=30.0, 
-    step=0.50
-)
-
-# Cargar y notificar estado
-df, status_msg = load_from_drive(drive_input)
-
-if "✅" in status_msg:
+# --- DATOS DE EJEMPLO SI NO HAY TABLA DE VIAJES ---
+if df_raw is None or 'KM_Ida' not in df_raw.columns:
+    df_trips = pd.DataFrame([
+        {"Fecha": "2026-10-01", "Cliente_Ruta": "Tandil - Rauch", "KM_Ida": 75, "Litros_Carga": 30000, "Tipo_Cobro": "Por Litro", "Tarifa": 30.0},
+        {"Fecha": "2026-10-03", "Cliente_Ruta": "Tandil - Azul", "KM_Ida": 100, "Litros_Carga": 28500, "Tipo_Cobro": "Por Litro", "Tarifa": 30.0},
+        {"Fecha": "2026-10-05", "Cliente_Ruta": "Tandil - Olavarría", "KM_Ida": 130, "Litros_Carga": 30000, "Tipo_Cobro": "Global", "Tarifa": 1050000.0},
+        {"Fecha": "2026-10-08", "Cliente_Ruta": "Tandil - Balcarce", "KM_Ida": 65, "Litros_Carga": 29000, "Tipo_Cobro": "Por Litro", "Tarifa": 30.0},
+    ])
+    st.sidebar.info("📌 Usando tabla de viajes de demostración.")
+else:
+    df_trips = df_raw.copy()
     st.sidebar.success(status_msg)
-elif "⚠️" in status_msg:
-    st.sidebar.warning(status_msg)
 
-# --- CÁLCULOS ---
-df['Costo_L_Tabla'] = df['Tarifa_Tn'] / 1000.0
-df['Costo_Viaje_Tabla'] = df['Tarifa_Tn'] * aforo_tn
-df['Costo_Viaje_Fijo'] = precio_fijo_litro * litros_totales
-df['Diferencia_Viaje'] = df['Costo_Viaje_Fijo'] - df['Costo_Viaje_Tabla']
+# --- PESTAÑAS DE LA APP ---
+tab1, tab2, tab3 = st.tabs(["🧮 Simulador de Viaje Puntual", "📊 Bitácora & Rentabilidad Mensual", "⚙️ Resumen Estructura de Costos"])
 
-# Punto de Equilibrio
-be_row = df[df['Costo_L_Tabla'] >= precio_fijo_litro].head(1)
-if not be_row.empty:
-    km_be = be_row.iloc[0]['KM']
-    costo_be = be_row.iloc[0]['Costo_L_Tabla']
-else:
-    km_be = "> 300"
-    costo_be = 0.0
+# ==========================================
+# TAB 1: SIMULADOR DE VIAJE PUNTUAL
+# ==========================================
+with tab1:
+    st.subheader("📍 Cotizador / Evaluador de Viaje Individual")
+    
+    col_sim1, col_sim2, col_sim3, col_sim4 = st.columns(4)
+    sim_km = col_sim1.number_input("Distancia de Ida (KM)", value=80, step=5)
+    sim_litros = col_sim2.number_input("Litros a Transportar", value=30000, step=1000)
+    sim_tipo_cobro = col_sim3.selectbox("Modalidad de Cobro", ["Por Litro ($/L)", "Monto Fijo Global ($)"])
+    
+    if sim_tipo_cobro == "Por Litro ($/L)":
+        sim_tarifa = col_sim4.number_input("Precio Cobrado por Litro ($)", value=30.0, step=0.5)
+        ingreso_sim = sim_litros * sim_tarifa
+    else:
+        sim_tarifa = col_sim4.number_input("Cobro Total del Flete ($)", value=900000.0, step=10000.0)
+        ingreso_sim = sim_tarifa
 
-# --- METRICAS DE CABECERA ---
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-kpi1.metric("Punto de Equilibrio", f"{km_be} KM", f"${costo_be:.2f} / Litro")
-kpi2.metric("Volumen por Viaje", f"{litros_totales:,.0f} Lts", f"{aforo_tn:.0f} Toneladas")
-kpi3.metric("Costo Fijo / Viaje", f"${precio_fijo_litro * litros_totales:,.2f}", f"${precio_fijo_litro:.2f} / Litro")
-kpi4.metric("Tarifa Máxima (300 km)", f"${df['Costo_L_Tabla'].max():.2f} / L", f"${df['Costo_Viaje_Tabla'].max():,.2f} / viaje")
+    km_totales_sim = sim_km * 2
+    costo_gasoil_sim = km_totales_sim * costo_gasoil_km
+    costo_mantenimiento_sim = km_totales_sim * costo_mantenimiento_km
+    costo_neumaticos_sim = km_totales_sim * costo_neumaticos_km
+    costo_var_sim = km_totales_sim * cv_total_km_recorrido
+    
+    costo_total_sim = costo_var_sim + cf_por_viaje
+    ganancia_neta_sim = ingreso_sim - costo_total_sim
+    margen_neto_pct_sim = (ganancia_neta_sim / ingreso_sim) * 100 if ingreso_sim > 0 else 0
 
-st.divider()
+    st.markdown("#### Resultado Financiero del Viaje")
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Ingreso Flete", f"${ingreso_sim:,.2f}")
+    m2.metric("Costo Variable (Gasoil+Maint)", f"${costo_var_sim:,.2f}")
+    m3.metric("Costo Fijo Asignado", f"${cf_por_viaje:,.2f}")
+    m4.metric("Ganancia Neta", f"${ganancia_neta_sim:,.2f}", f"{margen_neto_pct_sim:.1f}% Margen")
+    m5.metric("Costo por KM Recorrido", f"${costo_total_sim / km_totales_sim:,.2f} / km")
 
-# --- SIMULADOR DE KILOMETRAJE ---
-st.subheader("📍 Simulación por Recorrido")
-km_sim = st.slider("Seleccionar distancia recorrida (KM)", min_value=int(df['KM'].min()), max_value=int(df['KM'].max()), value=50)
+    # Desglose de costos del viaje
+    fig_pie = go.Figure(data=[go.Pie(
+        labels=['Gasoil', 'Mantenimiento', 'Cubiertas', 'Costo Fijo Prorrateado'],
+        values=[costo_gasoil_sim, costo_mantenimiento_sim, costo_neumaticos_sim, cf_por_viaje],
+        hole=.4
+    )])
+    fig_pie.update_layout(title="Distribución de Costos del Viaje", height=350)
+    st.plotly_chart(fig_pie, use_container_width=True)
 
-row_km = df[df['KM'] == km_sim].iloc[0]
-costo_tabla_l = row_km['Costo_L_Tabla']
-costo_tabla_v = row_km['Costo_Viaje_Tabla']
-costo_fijo_v = row_km['Costo_Viaje_Fijo']
-dif_v = row_km['Diferencia_Viaje']
+# ==========================================
+# TAB 2: BITÁCORA Y RENTABILIDAD CONSOLIDADA
+# ==========================================
+with tab2:
+    st.subheader("📈 Análisis de Rentabilidad Consolidada (Viajes Registrados)")
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Tarifa Tabla ($/L)", f"${costo_tabla_l:.2f}")
-c2.metric("Costo Viaje (Tabla)", f"${costo_tabla_v:,.2f}")
-c3.metric("Costo Viaje (Fijo Actual)", f"${costo_fijo_v:,.2f}")
+    # Procesamiento de la tabla de viajes
+    df_trips['KM_Totales'] = df_trips['KM_Ida'] * 2
+    df_trips['Costo_Combustible'] = df_trips['KM_Totales'] * costo_gasoil_km
+    df_trips['Costo_Variable'] = df_trips['KM_Totales'] * cv_total_km_recorrido
+    
+    # Calcular ingreso según tipo de cobro
+    if 'Tipo_Cobro' in df_trips.columns:
+        df_trips['Ingreso_Total'] = df_trips.apply(
+            lambda r: r['Litros_Carga'] * r['Tarifa'] if str(r['Tipo_Cobro']).lower() in ['por litro', 'por litro ($/l)'] else r['Tarifa'],
+            axis=1
+        )
+    else:
+        df_trips['Ingreso_Total'] = df_trips['Litros_Carga'] * 30.0
 
-if dif_v > 0:
-    pct = (dif_v / costo_tabla_v) * 100
-    c4.metric("Estado Operativo", f"Sobrepago de ${dif_v:,.2f}", f"+{pct:.1f}% vs Tabla", delta_color="inverse")
-else:
-    pct = (abs(dif_v) / costo_tabla_v) * 100
-    c4.metric("Estado Operativo", f"Ahorro de ${abs(dif_v):,.2f}", f"-{pct:.1f}% vs Tabla", delta_color="normal")
+    df_trips['Costo_Fijo_Asignado'] = cf_por_viaje
+    df_trips['Costo_Total'] = df_trips['Costo_Variable'] + df_trips['Costo_Fijo_Asignado']
+    df_trips['Margen_Bruto'] = df_trips['Ingreso_Total'] - df_trips['Costo_Variable']
+    df_trips['Ganancia_Neta'] = df_trips['Ingreso_Total'] - df_trips['Costo_Total']
+    df_trips['Margen_Pct'] = (df_trips['Ganancia_Neta'] / df_trips['Ingreso_Total']) * 100
 
-# --- GRÁFICO INTERACTIVO ---
-fig = go.Figure()
+    # KPIs Generales
+    tot_ingresos = df_trips['Ingreso_Total'].sum()
+    tot_costo_var = df_trips['Costo_Variable'].sum()
+    tot_km_recorridos = df_trips['KM_Totales'].sum()
+    tot_litros = df_trips['Litros_Carga'].sum()
+    
+    # Resultado operacional del mes
+    ganancia_operativa_real = tot_ingresos - tot_costo_var - cf_total_mensual
+    
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Facturación Total", f"${tot_ingresos:,.2f}", f"{len(df_trips)} viajes")
+    k2.metric("Litros Transportados", f"{tot_litros:,.0f} Lts", f"{tot_km_recorridos:,.0f} km recorridos")
+    k3.metric("Costo Variable Acumulado", f"${tot_costo_var:,.2f}")
+    k4.metric("Resultado Neto del Mes", f"${ganancia_operativa_real:,.2f}", f"{(ganancia_operativa_real/tot_ingresos)*100 if tot_ingresos>0 else 0:.1f}% Margen Global")
 
-fig.add_trace(go.Scatter(
-    x=df['KM'], 
-    y=df['Costo_L_Tabla'], 
-    mode='lines', 
-    name='Tarifa Referencia ($/L)', 
-    line=dict(color='#1f77b4', width=3)
-))
+    st.divider()
 
-fig.add_trace(go.Scatter(
-    x=df['KM'], 
-    y=[precio_fijo_litro]*len(df), 
-    mode='lines', 
-    name=f'Tarifa Fija Actual (${precio_fijo_litro:.2f}/L)', 
-    line=dict(color='#e377c2', width=2, dash='dash')
-))
+    # Gráfico Comparativo por Viaje
+    fig_bar = go.Figure()
+    fig_bar.add_trace(go.Bar(x=df_trips['Cliente_Ruta'], y=df_trips['Ingreso_Total'], name='Ingreso Flete', marker_color='#2ca02c'))
+    fig_bar.add_trace(go.Bar(x=df_trips['Cliente_Ruta'], y=df_trips['Costo_Variable'], name='Costo Variable', marker_color='#ff7f0e'))
+    fig_bar.add_trace(go.Bar(x=df_trips['Cliente_Ruta'], y=df_trips['Ganancia_Neta'], name='Ganancia Neta (Post Costo Fijo)', marker_color='#1f77b4'))
+    
+    fig_bar.update_layout(title="Comparativo de Ingresos vs. Costos por Viaje", barmode='group', height=400, template='plotly_white')
+    st.plotly_chart(fig_bar, use_container_width=True)
 
-if isinstance(km_be, (int, float)):
-    fig.add_vline(x=km_be, line_dash="dot", line_color="red", annotation_text=f"Equilibrio: {km_be} KM", annotation_position="top right")
-
-fig.update_layout(
-    title="Curva de Costo por Litro según Distancia Recorrida",
-    xaxis_title="Distancia (KM)",
-    yaxis_title="Costo ($ / Litro)",
-    hovermode="x unified",
-    template="plotly_white",
-    height=450
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-# --- TABLA DE DATOS ---
-with st.expander("📋 Ver Tabla Completa de Tarifas y Comparativa"):
+    # Detalle en Tabla
+    st.subheader("📋 Detalle del Registro de Viajes")
     st.dataframe(
-        df[['KM', 'Tarifa_Tn', 'Costo_L_Tabla', 'Costo_Viaje_Tabla', 'Costo_Viaje_Fijo', 'Diferencia_Viaje']].rename(columns={
-            'Tarifa_Tn': 'Tarifa ($/Tn)',
-            'Costo_L_Tabla': 'Tarifa Tabla ($/L)',
-            'Costo_Viaje_Tabla': 'Costo Viaje Tabla ($)',
-            'Costo_Viaje_Fijo': 'Costo Viaje Fijo ($)',
-            'Diferencia_Viaje': 'Diferencia ($)'
+        df_trips[['Fecha', 'Cliente_Ruta', 'KM_Ida', 'Litros_Carga', 'Ingreso_Total', 'Costo_Variable', 'Costo_Total', 'Ganancia_Neta', 'Margen_Pct']].rename(columns={
+            'KM_Ida': 'KM Ida',
+            'Litros_Carga': 'Litros',
+            'Ingreso_Total': 'Ingreso ($)',
+            'Costo_Variable': 'Costo Var ($)',
+            'Costo_Total': 'Costo Total ($)',
+            'Ganancia_Neta': 'Ganancia ($)',
+            'Margen_Pct': 'Margen (%)'
         }),
         use_container_width=True
     )
+
+# ==========================================
+# TAB 3: RESUMEN DE ESTRUCTURA DE COSTOS
+# ==========================================
+with tab3:
+    st.subheader("⚙️ Estructura Completa de Costos de la Unidad")
+    
+    col_c1, col_c2 = st.columns(2)
+    
+    with col_c1:
+        st.markdown("### Costos Variables por KM Recorrido")
+        st.write(f"* **Gasoil ({consumo_l_100km} L/100km @ ${gasoil_precio:.2f}/L):** ${costo_gasoil_km:.2f} / km")
+        st.write(f"* **Mantenimiento, Filtros y Repuestos:** ${costo_mantenimiento_km:.2f} / km")
+        st.write(f"* **Desgaste de Cubiertas / Neumáticos:** ${costo_neumaticos_km:.2f} / km")
+        st.info(f"**Total Costo Variable por KM:** ${cv_total_km_recorrido:.2f} / km recorrido (${cv_total_km_recorrido*2:.2f} por KM de ida)")
+
+    with col_c2:
+        st.markdown("### Costos Fijos Mensuales")
+        st.write(f"* **Sueldo Chofer y Cargas Sociales:** ${sueldo_chofer:,.2f}")
+        st.write(f"* **Seguro, Patentes, VTV, Satelital:** ${seguros_patentes:,.2f}")
+        st.write(f"* **Amortización / Depreciación:** ${amortizacion_unidad:,.2f}")
+        st.write(f"* **Gastos Administrativos y Cochera:** ${gastos_admin:,.2f}")
+        st.warning(f"**Total Costos Fijos Mensuales:** ${cf_total_mensual:,.2f} (${cf_por_viaje:,.2f} asignados por viaje sobre {viajes_estimados_mes} viajes/mes)")
